@@ -2,7 +2,6 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
-#include <opencv2/aruco.hpp>
 #include <opencv2/calib3d.hpp>
 
 #include <sstream>
@@ -13,24 +12,9 @@ using namespace std;
 using namespace cv;
 
 const float squareDim = 0.023f; // meters
-//const float arucoSquareDim = 
 const Size boardDim = Size(6, 9);
 
-void createArucoMarkers()
-{
-	Mat outputMarker;
-	Ptr<aruco::Dictionary> markerDictionary = aruco::getPredefinedDictionary(aruco::PREDEFINED_DICTIONARY_NAME::DICT_4X4_50);
-	
-	for(int i =0; i < 50; i++)
-	{
-		aruco::drawMarker(markerDictionary, i, 500, outputMarker, 1);
-		ostringstream convert;
-		string imageName = "4x4_Marker_";
-		convert << imageName << i << ".jpg";
-		imwrite(convert.str(), outputMarker);
-	}
-}
-
+// create the realword positions of the board
 void createKnowBoardPositions(Size boardSize, float edgeLength, vector<Point3f>& corners)
 {
 	for (int i = 0; i < boardSize.height; i++)
@@ -42,6 +26,7 @@ void createKnowBoardPositions(Size boardSize, float edgeLength, vector<Point3f>&
 	}
 }
 
+// Find the intersections on the chessboard image.
 void getCorners(vector<Mat> images, vector<vector<Point2f>>& allFoundCorners, bool showResults = false)
 {
 	for (vector<Mat>::iterator iter = images.begin(); iter != images.end(); iter++)
@@ -59,6 +44,7 @@ void getCorners(vector<Mat> images, vector<vector<Point2f>>& allFoundCorners, bo
 	}
 }
 
+// The function for the actual camera calibration and creation of the camera matrix. 
 void cameraCalibration(vector<Mat> calImages, Size boardSize, float edgeLen, Mat& camMat, Mat& distCoef)
 {
 	vector<vector<Point2f>> imgSpacePoints;
@@ -73,11 +59,9 @@ void cameraCalibration(vector<Mat> calImages, Size boardSize, float edgeLen, Mat
 	distCoef = Mat::zeros(8, 1, CV_64F); 
 
 	calibrateCamera(worldCornerPoints, imgSpacePoints, boardSize, camMat, distCoef, rVectors , tVectors);
-
-
-
 }
 
+// Save the camera calibration to a file
 bool saveCamCalibration(string filename, Mat cameraMat, Mat distCoef)
 {
 	ofstream outStream(filename);
@@ -113,6 +97,7 @@ bool saveCamCalibration(string filename, Mat cameraMat, Mat distCoef)
 	return false; 
 }
 
+// Main which starts the webcam and finds the corners on the checkerboard image and creates the camera matrix.
 int main(int argv, char** argc)
 {
 	Mat frame;
@@ -150,7 +135,7 @@ int main(int argv, char** argc)
 		switch (character)
 		{
 		case ' ':// Spacebar
-			//save image
+			//save image for calibration
 			if (found)
 			{
 				Mat temp;
@@ -160,7 +145,8 @@ int main(int argv, char** argc)
 			break;
 		case 13:// Enter
 			//Start calibration
-			if (savedImages.size() > 15)
+			// If you saved 15 images at least with space you can start calibration
+			if (savedImages.size() > 15) 
 			{
 				cameraCalibration(savedImages, boardDim, squareDim, cameraMat, distanceCoefficients);
 				saveCamCalibration("Calibration", cameraMat, distanceCoefficients);

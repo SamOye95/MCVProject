@@ -19,6 +19,7 @@ using namespace cv;
 
 const float squareDim = 0.023f; // meters
 const Size boardDim = Size(6, 9);
+bool cameraCalibrated = false;
 
 int framePerSecond = 20;
 int minSavedImages = 15; //Minimum number of boards need to be found before calibration
@@ -64,9 +65,7 @@ void cameraCalibration(vector<Mat> calImages, Size boardSize, float edgeLen, Mat
 {
 	vector<vector<Point2f>> imgSpacePoints;
 	getCorners(calImages, imgSpacePoints, false);
-
 	vector<vector<Point3f>> worldCornerPoints(1); 
-
 	createKnowBoardPositions(boardSize, edgeLen, worldCornerPoints[0]);
 	worldCornerPoints.resize(imgSpacePoints.size(), worldCornerPoints[0]);
 
@@ -84,6 +83,7 @@ bool saveCamCalibration(string filename, Mat cameraMat, Mat distCoef)
 	ofstream outStream(filename);
 	if (outStream)
 	{
+		// Distortion coefficients
 		uint16_t rows = cameraMat.rows;
 		uint16_t cols = cameraMat.cols; 
 
@@ -92,6 +92,7 @@ bool saveCamCalibration(string filename, Mat cameraMat, Mat distCoef)
 			for (int c = 0; c < cols; c++)
 			{
 				double value = cameraMat.at<double>(r, c);
+				cout << value << "\n";
 				outStream << value << endl; 
 			}
 
@@ -105,16 +106,20 @@ bool saveCamCalibration(string filename, Mat cameraMat, Mat distCoef)
 			for (int c = 0; c < cols; c++)
 			{
 				double value = distCoef.at<double>(r, c);
+				cout << value << "\n";
 				outStream << value << endl;
 			}
 		}
 
 		outStream.close();
+		cout << "Camera Calibration saved.\n";
 		return true;
 
 	}
+	cout << "Camera Calibration not saved.\n";
 	return false; 
 }
+
 
 // Load camera calibration matrix from a plain text file
 bool loadCameraCalibration(string filename, Mat& cameraMat, Mat& distCoef) 
@@ -218,51 +223,44 @@ void drawCube(float length, int thickness, Scalar color, Mat rVectors, Mat tVect
 	line(image, projectedPoints[3], projectedPoints[7], color, thickness);
 
 }
-// Main which starts the webcam and finds the corners on the checkerboard image and creates the camera matrix.
-int main(int argv, char** argc)
-{
-	Mat frame;
-	Mat drawToFrame;
-	Mat cameraMat = Mat::eye(3, 3, CV_64F);
-	Mat distanceCoefficients;
 
-	// Container for images used as camera calibration input
-	vector<Mat> savedImages; 
-	vector<vector<Point2f>> markerCorners, rejectedCanidates;
-	
-	// Start video capture and initialize image containers
+int liveCalibration(Mat frame, Mat drawToFrame, vector<Mat> savedImages, Mat cameraMat, Mat distanceCoefficients)
+{
 	VideoCapture vid(0);
 
 	if (!vid.isOpened())
 	{
 		return -1;
 	}
- 
+
+
+	int framePerSecond = 20;
 	namedWindow("Webcam", WINDOW_AUTOSIZE);
 
 	//Finds the chessboard pattern from the camera
 	while (true)
 	{
 		if (!vid.read(frame))
-			break; 
+			break;
 
 		vector<Vec2f> foundPoints;
 		bool found = false;
 		found = findChessboardCorners(frame, boardDim, foundPoints, CALIB_CB_ADAPTIVE_THRESH | CALIB_CB_FAST_CHECK | CALIB_CB_NORMALIZE_IMAGE);
 		frame.copyTo(drawToFrame);
 
-		if(!cameraCalibrated){
+
+		if (!cameraCalibrated) {
 			drawChessboardCorners(drawToFrame, boardDim, foundPoints, found);
 		}
 
 		if (found) {
 			imshow("Webcam", drawToFrame);
 
-			if (cameraCalibrated) 
+			if (cameraCalibrated)
 			{
 				vector<Point3f> worldCornerPoints;
 				createKnowBoardPositions(boardDim, squareDim, worldCornerPoints);
-				
+
 				// Finds an object pose from 3D-2D point correspondences, 
 				// Calculates the rotation and translation vector
 				Mat rVectors, tVectors;
@@ -273,12 +271,12 @@ int main(int argv, char** argc)
 				drawAxis(0.1f, 0.0f, 0.0f, RED, rVectors, tVectors, cameraMat, distanceCoefficients, frame);
 				drawAxis(0.0f, 0.1f, 0.0f, GREEN, rVectors, tVectors, cameraMat, distanceCoefficients, frame);
 				drawAxis(0.0f, 0.0f, 0.1f, BLUE, rVectors, tVectors, cameraMat, distanceCoefficients, frame);
-			
+
 				// Draw a cube from the origin
 				drawCube(0.05f, 2, WHITE, rVectors, tVectors, cameraMat, distanceCoefficients, frame);
-			
-			
-			
+
+
+
 			}
 			else
 			{
@@ -297,13 +295,13 @@ int main(int argv, char** argc)
 		}
 		else
 		{
-			if (!cameraCalibrated) 
+			if (!cameraCalibrated)
 			{
-				if(savedImages.size() >= 15)
+				if (savedImages.size() >= 15)
 				{
 					putText(frame, "Press L to load saved calibration, use chessboard to calibrate,",
 						cv::Point(10, 15), FONT_HERSHEY_COMPLEX_SMALL, 0.6, cv::Scalar(200, 200, 250), 1, LINE_AA);
-					
+
 					putText(frame, "or press Enter to calibrate.",
 						cv::Point(10, 30), FONT_HERSHEY_COMPLEX_SMALL, 0.6, cv::Scalar(200, 200, 250), 1, LINE_AA);
 				}
@@ -324,6 +322,7 @@ int main(int argv, char** argc)
 		{
 		case ' ':// Spacebar
 			//save image for calibration
+
 			if (found)
 			{
 				Mat temp;
@@ -334,7 +333,7 @@ int main(int argv, char** argc)
 		case 13:// Enter
 			//Start calibration
 			// If you saved 15 images at least with space you can start calibration
-			if (savedImages.size() > minSavedImages) 
+			if (savedImages.size() > minSavedImages)
 			{
 				cameraCalibration(savedImages, boardDim, squareDim, cameraMat, distanceCoefficients);
 				saveCamCalibration("Calibration", cameraMat, distanceCoefficients);
@@ -348,9 +347,50 @@ int main(int argv, char** argc)
 			break;
 		case 27: //Escape
 			// exit
-			return 0; 
+			return 0;
 			break;
 		}
 	}
 	return 0;
+}
+
+// Main which starts the webcam and finds the corners on the checkerboard image and creates the camera matrix.
+int main(int argv, char** argc)
+{
+	Mat frame;
+	Mat drawToFrame;
+	Mat cameraMat = Mat::eye(3, 3, CV_64F);
+	Mat distanceCoefficients;
+	vector<Mat> savedImages;
+	vector<vector<Point2f>> markerCorners, rejectedCanidates;
+
+	cout << "Press i for images for intrinsic calibration and v for live video calibration or \nl to load a calibration, then press enter to start.  \n";
+	char ch = getchar();
+
+	if (ch == 'i')
+		{
+			vector<cv::String> fn;
+			glob("C:/Users/Lisa/Pictures/Camera Roll/*.jpg", fn, false);
+
+			size_t count = fn.size(); //number of png files in images folder
+			for (size_t i = 0; i < 1; i++)
+				savedImages.push_back(imread(fn[i]));
+
+			cout << "Images loaded \n";
+			cout << "Starting Camera Calibration. \n";
+			cameraCalibration(savedImages, boardDim, squareDim, cameraMat, distanceCoefficients);
+			cout << "Camera calibration complete. \n";
+			saveCamCalibration("CalibrationValues", cameraMat, distanceCoefficients);
+		}
+
+	if (ch == 'v')
+	{
+		liveCalibration(frame, drawToFrame, savedImages, cameraMat, distanceCoefficients);
+	}
+
+	if (ch = 'l')
+	{
+		cout << "Starting extrinsic calibration";
+		return 0;
+	}
 }

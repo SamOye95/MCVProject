@@ -23,9 +23,9 @@ const Size boardDim = Size(6, 9);
 
 int framePerSecond = 20;
 int minSavedImages = 15; //Minimum number of boards need to be found before calibration
-String folderName = "C:/Users/Lisa/Pictures/Camera Roll/*.jpg";
+String folderName = "C:/Users/Lisa/Pictures/Camera Roll/*.jpg"; // Directory of the images
 
-bool cameraCalibrated = false; // intial state of camera calibratio
+bool cameraCalibrated = false; // intial state of camera calibration
 							  
 // create the realword positions of the board
 void createKnowBoardPositions(Size boardSize, float edgeLength, vector<Point3f>& corners)

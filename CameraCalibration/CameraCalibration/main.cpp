@@ -22,7 +22,8 @@ const float squareDim = 0.023f; // meters
 const Size boardDim = Size(6, 9);
 
 int framePerSecond = 20;
-int minSavedImages = 5; //Minimum number of boards need to be found before calibration
+int minSavedImages = 15; //Minimum number of boards need to be found before calibration
+String folderName = "C:/Users/Lisa/Pictures/Camera Roll/*.jpg";
 
 bool cameraCalibrated = false; // intial state of camera calibratio
 							  
@@ -255,6 +256,7 @@ int liveCalibration(Mat frame, Mat drawToFrame, vector<Mat> savedImages, Mat cam
 		if (found) {
 			imshow("Webcam", drawToFrame);
 
+			// When calibrated draw the cube
 			if (cameraCalibrated)
 			{
 				vector<Point3f> worldCornerPoints;
@@ -292,6 +294,7 @@ int liveCalibration(Mat frame, Mat drawToFrame, vector<Mat> savedImages, Mat cam
 		}
 		else
 		{
+			// When not calibrated keep taking pictures until threshold is reached
 			if (!cameraCalibrated)
 			{
 				if (savedImages.size() >= 15)
@@ -367,9 +370,9 @@ int main(int argv, char** argc)
 	if (ch == 'i')
 	{
 		vector<cv::String> fn;
-		glob("C:/Users/Lisa/Pictures/Camera Roll/*.jpg", fn, false);
+		glob(folderName, fn, false);
 
-		size_t count = fn.size(); //number of png files in images folder
+		size_t count = fn.size(); //number of jpg files in images folder
 		for (size_t i = 0; i < minSavedImages; i++)
 			savedImages.push_back(imread(fn[i]));
 

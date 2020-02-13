@@ -14,17 +14,18 @@
 #define BLUE	Scalar(0, 0, 255)
 #define WHITE	Scalar(255, 255, 255)
 #define ORIGIN	Point3f(0.f)
+
 using namespace std;
 using namespace cv;
 
 const float squareDim = 0.023f; // meters
 const Size boardDim = Size(6, 9);
-bool cameraCalibrated = false;
 
 int framePerSecond = 20;
-int minSavedImages = 15; //Minimum number of boards need to be found before calibration
+int minSavedImages = 5; //Minimum number of boards need to be found before calibration
 
-bool cameraCalibrated = false; // intial state of camera calibration
+bool cameraCalibrated = false; // intial state of camera calibratio
+							  
 // create the realword positions of the board
 void createKnowBoardPositions(Size boardSize, float edgeLength, vector<Point3f>& corners)
 {
@@ -120,7 +121,6 @@ bool saveCamCalibration(string filename, Mat cameraMat, Mat distCoef)
 	return false; 
 }
 
-
 // Load camera calibration matrix from a plain text file
 bool loadCameraCalibration(string filename, Mat& cameraMat, Mat& distCoef) 
 {
@@ -186,7 +186,6 @@ void drawAxis(float x, float y, float z, Scalar color, Mat rVectors, Mat tVector
 	arrowedLine(image, projectedPoints[0], projectedPoints[1], color);
 }
 
-
 // Draws a cube with given side length and thickness and color, given the camera parameters.
 void drawCube(float length, int thickness, Scalar color, Mat rVectors, Mat tVectors, Mat& cameraMat, Mat& distCoef, Mat& image) 
 {
@@ -224,6 +223,7 @@ void drawCube(float length, int thickness, Scalar color, Mat rVectors, Mat tVect
 
 }
 
+// Method for calibration using the webcam. 
 int liveCalibration(Mat frame, Mat drawToFrame, vector<Mat> savedImages, Mat cameraMat, Mat distanceCoefficients)
 {
 	VideoCapture vid(0);
@@ -233,13 +233,12 @@ int liveCalibration(Mat frame, Mat drawToFrame, vector<Mat> savedImages, Mat cam
 		return -1;
 	}
 
-
-	int framePerSecond = 20;
 	namedWindow("Webcam", WINDOW_AUTOSIZE);
 
 	//Finds the chessboard pattern from the camera
 	while (true)
 	{
+		// If the camera is not giving back any input abort. 
 		if (!vid.read(frame))
 			break;
 
@@ -275,12 +274,10 @@ int liveCalibration(Mat frame, Mat drawToFrame, vector<Mat> savedImages, Mat cam
 				// Draw a cube from the origin
 				drawCube(0.05f, 2, WHITE, rVectors, tVectors, cameraMat, distanceCoefficients, frame);
 
-
-
 			}
 			else
 			{
-				if (savedImages.size() >= 15)
+				if (savedImages.size() >= minSavedImages)
 				{
 					putText(drawToFrame, "Pattern found. Press Space to save. " + to_string(savedImages.size()) + "/" + to_string(minSavedImages) + ". Press Enter to calibrate.",
 						cv::Point(10, 15), FONT_HERSHEY_COMPLEX_SMALL, 0.6, cv::Scalar(200, 200, 250), 1, LINE_AA);
@@ -368,29 +365,116 @@ int main(int argv, char** argc)
 	char ch = getchar();
 
 	if (ch == 'i')
+	{
+		vector<cv::String> fn;
+		glob("C:/Users/Lisa/Pictures/Camera Roll/*.jpg", fn, false);
+
+		size_t count = fn.size(); //number of png files in images folder
+		for (size_t i = 0; i < minSavedImages; i++)
+			savedImages.push_back(imread(fn[i]));
+
+		cout << "Images loaded \n";
+		cout << "Starting Camera Calibration. \n";
+		cameraCalibration(savedImages, boardDim, squareDim, cameraMat, distanceCoefficients);
+		cout << "Camera calibration complete. \n";
+		saveCamCalibration("CalibrationValues", cameraMat, distanceCoefficients);
+
+		cout << "Starting webcam for cube drawing. \n";
+
+		VideoCapture vid(0);
+
+		if (!vid.isOpened())
 		{
-			vector<cv::String> fn;
-			glob("C:/Users/Lisa/Pictures/Camera Roll/*.jpg", fn, false);
-
-			size_t count = fn.size(); //number of png files in images folder
-			for (size_t i = 0; i < 1; i++)
-				savedImages.push_back(imread(fn[i]));
-
-			cout << "Images loaded \n";
-			cout << "Starting Camera Calibration. \n";
-			cameraCalibration(savedImages, boardDim, squareDim, cameraMat, distanceCoefficients);
-			cout << "Camera calibration complete. \n";
-			saveCamCalibration("CalibrationValues", cameraMat, distanceCoefficients);
+			return -1;
 		}
+
+		namedWindow("Webcam", WINDOW_AUTOSIZE);
+
+		while (true)
+		{
+			// If the camera is not giving back any input abort. 
+			if (!vid.read(frame))
+				break;
+
+			vector<Vec2f> foundPoints;
+			bool found = false;
+			found = findChessboardCorners(frame, boardDim, foundPoints, CALIB_CB_ADAPTIVE_THRESH | CALIB_CB_FAST_CHECK | CALIB_CB_NORMALIZE_IMAGE);
+			frame.copyTo(drawToFrame);
+
+
+			if (!cameraCalibrated) {
+				drawChessboardCorners(drawToFrame, boardDim, foundPoints, found);
+			}
+
+			if (found) {
+				imshow("Webcam", drawToFrame);
+
+				if (cameraCalibrated)
+				{
+					vector<Point3f> worldCornerPoints;
+					createKnowBoardPositions(boardDim, squareDim, worldCornerPoints);
+
+					// Finds an object pose from 3D-2D point correspondences, 
+					// Calculates the rotation and translation vector
+					Mat rVectors, tVectors;
+					solvePnP(worldCornerPoints, foundPoints, cameraMat, distanceCoefficients, rVectors, tVectors);
+
+
+					// Draws the coordinate axes
+					drawAxis(0.1f, 0.0f, 0.0f, RED, rVectors, tVectors, cameraMat, distanceCoefficients, frame);
+					drawAxis(0.0f, 0.1f, 0.0f, GREEN, rVectors, tVectors, cameraMat, distanceCoefficients, frame);
+					drawAxis(0.0f, 0.0f, 0.1f, BLUE, rVectors, tVectors, cameraMat, distanceCoefficients, frame);
+
+					// Draw a cube from the origin
+					drawCube(0.05f, 2, WHITE, rVectors, tVectors, cameraMat, distanceCoefficients, frame);
+
+				}
+				else
+				{
+					if (savedImages.size() >= minSavedImages)
+					{
+						putText(drawToFrame, "Pattern found. Press Space to save. " + to_string(savedImages.size()) + "/" + to_string(minSavedImages) + ". Press Enter to calibrate.",
+							cv::Point(10, 15), FONT_HERSHEY_COMPLEX_SMALL, 0.6, cv::Scalar(200, 200, 250), 1, LINE_AA);
+					}
+					else
+					{
+						putText(drawToFrame, "Pattern found. Press Space to save. " + to_string(savedImages.size()) + "/" + to_string(minSavedImages) + ".",
+							cv::Point(10, 15), FONT_HERSHEY_COMPLEX_SMALL, 0.6, cv::Scalar(200, 200, 250), 1, LINE_AA);
+					}
+				}
+				imshow("Webcam", frame);
+			}
+			else
+			{
+				if (!cameraCalibrated)
+				{
+					putText(frame, "Press L to load saved calibration or escape to exit.",
+					cv::Point(10, 15), FONT_HERSHEY_COMPLEX_SMALL, 0.6, cv::Scalar(200, 200, 250), 1, LINE_AA);
+				}
+
+				imshow("Webcam", frame);
+			}
+
+			//Input handling
+			char character = waitKey(1000 / framePerSecond);
+
+			switch (character)
+			{
+			case 'l':
+				// Load camera calibration data from file
+				loadCameraCalibration("Calibration", cameraMat, distanceCoefficients);
+				cameraCalibrated = true;
+				break;
+			case 27: //Escape
+				// exit
+				return 0;
+				break;
+			}
+		}
+    }
 
 	if (ch == 'v')
 	{
 		liveCalibration(frame, drawToFrame, savedImages, cameraMat, distanceCoefficients);
-	}
-
-	if (ch = 'l')
-	{
-		cout << "Starting extrinsic calibration";
-		return 0;
 	}
 }
